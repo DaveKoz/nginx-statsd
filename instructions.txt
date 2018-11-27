@@ -1,8 +1,9 @@
-compiling a dynamic module into nginx
+compiling a dynamic module into nginx on ubuntu
 
-0. install nginx: apt-get install nginx. this will serve as baseline config for us.
+0. install nginx: apt-get install nginx. this will serve as baseline config for us. note that by default (on ubuntu, anyways)
+the nginx version that gets installed is "stable", not "mainline". its ususally a litttle old, so you might want to get "mainline" instead. refer to this doc: https://gist.github.com/craigvantonder/729fc169ae087918e6de744f420adf8b
 
-1. determine which nginx version you need to compile - run nginx -v to find out.
+1. determine which nginx version you need to compile - run "nginx -v" to find out.
 nginx version: nginx/1.14.0 (Ubuntu)
 
 2. download the nginx source files - you'll need to compile them
@@ -13,56 +14,49 @@ tar -xvzf nginx-1.14.0.tar.gz
 
 4. sudo su
 
-5. install deps (on ubuntu):
+5. install deps for make:
 apt-get update
 apt-get install -y libpcre3 libpcre3-dev zlib1g zlib1g-dev libssl-dev gcc linux-kernel-headers make
 
 6. run the configure script inside the nginx folder. it should complete succesfully
-7. run make, it should end succesfully. we're just testing to see that all works fine.
+7. run make, it should end succesfully. we're just testing to see that all works fine and that we have all the prerequisites for nginx compilation.
 
 congrats - you built a vanilla nginx! the finished binary is in ./objs/
 
 8. now we're going to build just the dynamic module.
 9. download the module. in our case, its 
 git clone https://github.com/kinecosystem/nginx-statsd.git. clone it next to the nginx folder (not inside it)
+
 10. run nginx -V, to see all the compilation flags of the nginx you're already using. we're going to recompile nginx with all the flags - plus the dynamic module. on my machine, its: --with-cc-opt='-g -O2 -fdebug-prefix-map=/build/nginx-FIJPpj/nginx-1.14.0=. -fstack-protector-strong -Wformat -Werror=format-security -fPIC -Wdate-time -D_FORTIFY_SOURCE=2' --with-ld-opt='-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -fPIC' --prefix=/usr/share/nginx --conf-path=/etc/nginx/nginx.conf --http-log-path=/var/log/nginx/access.log --error-log-path=/var/log/nginx/error.log --lock-path=/var/lock/nginx.lock --pid-path=/run/nginx.pid --modules-path=/usr/lib/nginx/modules --http-client-body-temp-path=/var/lib/nginx/body --http-fastcgi-temp-path=/var/lib/nginx/fastcgi --http-proxy-temp-path=/var/lib/nginx/proxy --http-scgi-temp-path=/var/lib/nginx/scgi --http-uwsgi-temp-path=/var/lib/nginx/uwsgi --with-debug --with-pcre-jit --with-http_ssl_module --with-http_stub_status_module --with-http_realip_module --with-http_auth_request_module --with-http_v2_module --with-http_dav_module --with-http_slice_module --with-threads --with-http_addition_module --with-http_geoip_module=dynamic --with-http_gunzip_module --with-http_gzip_static_module --with-http_image_filter_module=dynamic --with-http_sub_module --with-http_xslt_module=dynamic --with-stream=dynamic --with-stream_ssl_module --with-mail=dynamic --with-mail_ssl_module
 
 note that as per the flags abobe, compiled dynamic modules are expected to be in /usr/lib/nginx/modules.
 
-11. run the following command, which re-configures the make to add the dynamic module. it also removes some other modules that are uncesscary, like the http_image_filter_module and http_geoip_module
+11. run the configure command again, but this time add all the flags from the previous step AND another one: --add-dynamic-module=../nginx-statsd . this will mimic the same definitions as the nginx you've installed with 'apt-get' and also add in our dynamic module.
 
-./configure --with-compat --with-cc-opt='-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -Wdate-time -D_FORTIFY_SOURCE=2' --with-ld-opt='-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -fPIC' --prefix=/usr/share/nginx --conf-path=/etc/nginx/nginx.conf --http-log-path=/var/log/nginx/access.log --error-log-path=/var/log/nginx/error.log --lock-path=/var/lock/nginx.lock --pid-path=/run/nginx.pid --modules-path=/usr/lib/nginx/modules --http-client-body-temp-path=/var/lib/nginx/body --http-fastcgi-temp-path=/var/lib/nginx/fastcgi --http-proxy-temp-path=/var/lib/nginx/proxy --http-scgi-temp-path=/var/lib/nginx/scgi --http-uwsgi-temp-path=/var/lib/nginx/uwsgi --with-debug --with-pcre-jit --with-http_ssl_module --with-http_stub_status_module --with-http_realip_module --with-http_auth_request_module --with-http_v2_module --with-http_dav_module --with-http_slice_module --with-threads --with-http_addition_module --with-http_gunzip_module --with-http_gzip_static_module --with-http_sub_module --with-stream --with-stream_ssl_module --with-mail --with-mail_ssl_module --add-dynamic-module=../../nginx-statsd
-
-12. run 'make modules'. this will build the module.
-
+12. run 'make modules'. this will build the module. it'll be in the ./objs/ folder
+ 
 13. copy the ngx_http_statsd_module.so file from objs to where nginx modules are expected - /usr/lib/nginx/modules/ (this value is set into the configure script)
 
-14. in your nginx config, we'll want to remove the http_image_filter_module, http-xslt-filter  and http_geoip_module which we did not compile into the binary. so remove the following:
-rm /etc/nginx/modules-enabled/50-mod-http-geoip.conf
-rm /etc/nginx/modules-enabled/50-mod-http-image-filter.conf
-rm /etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf
-you'll probably want to totally remove the contents of /etc/nginx/modules-enabled
 
+14. now lets configure nginx to use our new module. add this line somewhere in the top of the file: load_module modules/ngx_http_statsd_module.so;
 
-16. now lets configure nginx to use our new module. add this line somewhere in the top of the file: load_module modules/ngx_http_statsd_module.so;
+15. nginx should be able to start correctly now. try it: service nginx restart
 
-17. nginx should be able to start correctly now. try it: service nginx restart
-
-18. lets modify nginx config to actually use the module: edit /etc/nginx/sites-enabled/default. 
+16. lets modify nginx config to actually use the module: edit /etc/nginx/sites-enabled/default. 
 a. add the line 'statsd_server localhost;' somewhere in the top
 b. replace the contents of location /, with this:
 proxy_pass http://localhost:8000; 
 statsd_timing "your_product.$request_method.index_response_time" "$upstream_response_time";
 
-19. reload nginx config: nginx -s reload
+17. reload nginx config: nginx -s reload
 
-20. lets setup a slow server at port 8000: copy the webserver.py file from github and run it locally: python webserver.py (its for python2, run with python webserver.py 8000 and test with curl localhost:8000). it needs to be slow, because the nginx statsd plugin does not output anything for requests that take zeo time. so the webserver generates a delay.
+18. lets setup a slow server at port 8000: copy the webserver.py file from github and run it locally: python webserver.py (its for python2, run with python webserver.py 8000 and test with curl localhost:8000). it needs to be slow, because the nginx statsd plugin does not output anything for requests that take zeo time. so the webserver generates a delay.
 
-21. for statsd you'll need node.js: 
+19. for statsd you'll need node.js: 
 curl -sL https://deb.nodesource.com/setup_11.x | sudo -E bash -
 sudo apt-get install -y nodejs
 
-22. now lets setup a local statsd server: see instructions here: https://anomaly.io/statsd-install-and-config/ . Basically: git clone https://github.com/etsy/statsd.git , cd statsd, create a file 'config.js' with contents: { port: 8125, mgmt_port: 8126, backends: [ "./backends/console" ]} and run the whole thing with 'node stats.js config.js'
+20. now lets setup a local statsd server: see instructions here: https://anomaly.io/statsd-install-and-config/ . Basically: git clone https://github.com/etsy/statsd.git , cd statsd, create a file 'config.js' with contents: { port: 8125, mgmt_port: 8126, backends: [ "./backends/console" ]} and run the whole thing with 'node stats.js config.js'
 
 to sum: now we have an nginx listening on port 80 which (1) forwards to port 8000 (where a slow webserver resides and outputs stats to a local statsd at port 8125 which sends stuff to the console). when a request (curl localhost:80/ -XGET) goes to nginx, it gets forwarded to 8000, delayed in the web server and returns back to nginx on its way out. then nginx shoots the stats into port 8125 and statsd sends them to the console. you should see something like: 
 
