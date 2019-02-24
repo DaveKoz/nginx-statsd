@@ -1,8 +1,8 @@
 nginx-statsd
 ============
 
-An nginx module for sending statistics to statsd. Compatible with nginx 1.14.0, tested Nov`18.
-a compiled module (for 1.14.0) can be obtained here - in the repo
+An nginx module for sending statistics to statsd. Compatible with nginx 1.15.8, tested Feb`19.
+a compiled module can be obtained here - in the repo (for 1.14.0, 1.15.8) 
 
 This is how to use the nginx-statsd module:
 
